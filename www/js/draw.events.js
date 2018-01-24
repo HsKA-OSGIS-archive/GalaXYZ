@@ -129,13 +129,15 @@ function onDrawCreated(e) {
        	// Create a turf polygn and add the leaflet layer id
        	var turfPoly = getTurfPolygon(coordsRefined, layer._leaflet_id);
 
-       	// Add to nogo-areas list
-       	//plotlayers.push(turfPoly);
         nogo_Poly.push(turfPoly);
 
-       	// Construct a WKT of all the polygons
-       	//console.log((getWKT(nogo_Poly, "Polygon")));
-        panel_addNogo(layer._leaflet_id);
+        layer["ok"] = true;
+
+       	// Add to nogo-areas list
+       	//plotlayers.push(turfPoly);
+        // VALIDATE POLY
+        //console.log("Created");
+        //console.log(validateNogoPoly(turfPoly));
       } 
 
       else {
@@ -203,8 +205,10 @@ function stageJSONFile(geojson) {
         // Construct a turf polygon with the original geojson coordinates format
         var turfPoly = turf.polygon([coordinates]);
 
+        var nogoIsOkay = !validateNogoPoly(layer.toGeoJSON());
+
         // Validate the polygon
-        if(validateNogoPoly(turfPoly)){
+        if(nogoIsOkay){
           // Convert to leaflet lat lng format
           var latlngArray = [];
           for(var i = 0 ; i < coordinates.length; i++) {
@@ -269,9 +273,18 @@ function onDrawEdited(e){
         // Re-create the polygn
         var turfPoly = getTurfPolygon(coordsRefined, layer._leaflet_id);
 
-        // Replace the edited feature in the list
-        nogo_Poly[index] = turfPoly;
-        console.log("Polygon/ Rectangle replaced")
+        var nogoIsOkay = validateNogoPoly(layer.toGeoJSON());
+
+        console.log(nogoIsOkay);
+
+        if(!nogoIsOkay) {
+
+          // Replace the edited feature in the list
+          nogo_Poly[index] = turfPoly;
+
+        } else {
+          nogoAreas.removeLayer(layer);
+        }
 
       } else {
 
