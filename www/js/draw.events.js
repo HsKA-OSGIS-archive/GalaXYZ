@@ -50,7 +50,7 @@ function registerDrawEvents(){
 */
 function onDrawStart(e) {
 
-  console.log("Draw start");
+  //console.log("Draw start");
 
   // Clear all the guide lines on the map
   guides.clearLayers();
@@ -101,12 +101,10 @@ function onDrawStart(e) {
 */
 function onDrawCreated(e) {
 
-	console.log("Draw created");
+	//console.log("Draw created");
 
 	var layer = e.layer;
   var type = e.layerType;
-
-  console.log(layer);
 
   // Protocol if the user draws a polygon on the map
 
@@ -124,18 +122,15 @@ function onDrawCreated(e) {
 
         layer.on('click', e => nogoOnClick(e));
 
-       	var coordsRefined = getFormatedCoords(layer);
+       	// Create a geojson and add the leaflet layer id
+        var geojson = layer.toGeoJSON();
+        
+        geojson["id"] = layer._leaflet_id;
 
-       	// Create a turf polygn and add the leaflet layer id
-       	var turfPoly = getTurfPolygon(coordsRefined, layer._leaflet_id);
+        nogo_Poly.push(geojson);
 
-       	// Add to nogo-areas list
-       	//plotlayers.push(turfPoly);
-        nogo_Poly.push(turfPoly);
-
-       	// Construct a WKT of all the polygons
-       	//console.log((getWKT(nogo_Poly, "Polygon")));
         panel_addNogo(layer._leaflet_id);
+
       } 
 
       else {
@@ -148,26 +143,6 @@ function onDrawCreated(e) {
 
   } // End polygon protocol
 
-
-  // Protocol if the user draws a polyline on the map
-
-  if(type.toUpperCase() === 'POLYLINE'){
-
-      // Display drawn polygon on the map
-      // Note nogoAreas is a feature collection already attached to the map
-      nogoAreas.addLayer(layer);
-
-      // Create a turf linestring and add the leaflet layer id
-      var turfLineString = getTurfLineString(layer, layer._leaflet_id);
-
-      // Add to nogo-areas list
-      nogo_Line.push(turfLineString);
-
-      // Construct a WKT of all the lines
-      console.log((getWKT(nogo_Line, "LineString")));
-
-   } // End polyline protocol
-
    // Protocol for drawing points for routing
    // This protocol is transfered to the routing.js -> /js/routing.js
 
@@ -175,7 +150,6 @@ function onDrawCreated(e) {
 
       // Check if point is on nogo area
       addDirectionPoint(layer.getLatLng().lng, layer.getLatLng().lat);
-      //console.log(directionPoints)
    }
 
 }
@@ -186,6 +160,8 @@ function onDrawCreated(e) {
 * @param {GeoJSON} geojson - uploaded geojson object
 */
 function stageJSONFile(geojson) {
+
+  //console.log(geojson);
 
   if(geojson.type.toUpperCase() === "FEATURECOLLECTION") {
 
@@ -200,13 +176,17 @@ function stageJSONFile(geojson) {
         var coordinates = feature.geometry.geometry.coordinates[p];
 
         // Add to nogo poly array list
-        // Construct a turf polygon with the original geojson coordinates format
+        // Construct a turf polygon with the original geojson coordinates
         var turfPoly = turf.polygon([coordinates]);
 
+        var nogoIsOkay = !validateNogoPoly(turfPoly);
+
         // Validate the polygon
-        if(validateNogoPoly(turfPoly)){
+        if(nogoIsOkay){
+
           // Convert to leaflet lat lng format
           var latlngArray = [];
+
           for(var i = 0 ; i < coordinates.length; i++) {
             var latlng = new L.LatLng(parseFloat(coordinates[i][1]), parseFloat(coordinates[i][0]));
             latlngArray.push(latlng);
@@ -224,17 +204,17 @@ function stageJSONFile(geojson) {
           // Add to the panel
           panel_addNogo(polygon._leaflet_id);
 
-          
-
           // Add a tag to the new polygon, this is useful when the the user deletes a polygon
           turfPoly["id"] = polygon._leaflet_id;
 
           //var turfPoly = getTurfPolygon(latlngArray, polygon._leaflet_id);
           nogo_Poly.push(turfPoly);
+
+          nogoDijkstra();
         }
 
         else {
-          console.log("Cannot add nogo area(s) over a via point");
+          alert("Cannot add nogo area(s) over a via point");
         }
       }
     }
@@ -250,7 +230,8 @@ function stageJSONFile(geojson) {
 
 function onDrawEdited(e){
 
-	console.log("Draw edited");
+	//console.log("Draw edited");
+
 	var layers = e.layers;
   
 
@@ -261,17 +242,31 @@ function onDrawEdited(e){
       // Get the index of the item using its leaflet ID
       var index = nogo_Poly.map(function(e) { return e.id; }).indexOf(layer._leaflet_id);
 
+      // Means Polygon
       if(index >= 0){
 
-        // Means Polygon
-        var coordsRefined = getFormatedCoords(layer);
-
         // Re-create the polygn
-        var turfPoly = getTurfPolygon(coordsRefined, layer._leaflet_id);
 
-        // Replace the edited feature in the list
-        nogo_Poly[index] = turfPoly;
-        console.log("Polygon/ Rectangle replaced")
+        var geojson = layer.toGeoJSON();
+        
+        geojson["id"] = layer._leaflet_id;
+
+        var nogoIsOkay = validateNogoPoly(layer.toGeoJSON());
+
+        if(!nogoIsOkay) {
+
+          // Replace the edited feature in the list
+          nogo_Poly[index] = geojson;
+
+          nogoDijkstra();
+
+        } else {
+
+          panel_delNogo(layer._leaflet_id);
+          nogoAreas.removeLayer(layer);
+
+          alert("Nogo area removed");
+        }
 
       } else {
 
@@ -288,7 +283,7 @@ function onDrawEdited(e){
 
           // Replace the edited feature in the list
           nogo_Line[index] = turfLineString;
-          console.log("LineString replaced");
+          //console.log("LineString replaced");
 
         } else {
 
@@ -322,7 +317,7 @@ function onMarkerDragEnd(event, node_id) {
 
 function onDrawDeleted(e){
 
-	console.log("Draw deleted");
+	//console.log("Draw deleted");
 
 	var layers = e.layers;
 
@@ -340,7 +335,7 @@ function onDrawDeleted(e){
           // Delete the edited feature in the list
           nogo_Poly.splice(index, 1);
 
-          console.log("Polygon removed from the list");
+          //console.log("Polygon removed from the list");
 
         } // if
 
@@ -357,7 +352,7 @@ function onDrawDeleted(e){
             // Delete the edited feature in the list
             nogo_Line.splice(index, 1);
 
-            console.log("LineString removed from the list");
+            //console.log("LineString removed from the list");
 
           } else {
 
@@ -378,88 +373,6 @@ function onDrawDeleted(e){
 // ---------------------------------------------------------
 //                      ASSISTING FUNCTIONS
 // ---------------------------------------------------------
-
-/**
-* Refines the coordinates generated from the draw events and 
-* gets it ready to be converted to polygon format
-* @param {L.Layer} layer - Leaflet layer
-* @return {Array} coordinates array in leaflet lat lng format 
-*/
-function getFormatedCoords(layer){
-
-
-	var coords = layer.getLatLngs()[0];
-
-
-    // Remove duplicates 
-    var coordsRefined = coords;
-    for(var ii = 0 ; ii < coords.length; ii++){
-
-        for(var jj = 0 ; jj < coords.length; jj++){
-            
-            if(jj != ii){
-                
-                if(coords[jj].lat == coords[ii].lat && coords[jj].lng == coords[ii].lng){
-                    coordsRefined.splice(jj, 1);
-                }
-            } 
-        }
-    }
-
-   // Close the polygon by adding the first coords to the last index.
-   coordsRefined.push(coordsRefined[0]);
-
-   return coordsRefined;
-}
-
-/**
-* Refines the coordinates generated from the draw events and 
-* gets it ready to be converted to polygon format
-* @param {L.Layer} layer - Leaflet layer
-* @param {Number} id - leaflet id of the original layer
-* @return {Feature} GeoJSON Feature: Polygon
-*/
-function getTurfPolygon(coordsRefined, leaflet_id){
-
-	// Format coords to turf index
-    var turfCoords = [];
-
-   	for(var ii = 0; ii < coordsRefined.length; ii++){
-        //Turf uses lng, lat
-        turfCoords[ii] = [ coordsRefined[ii].lng, coordsRefined[ii].lat ];
-   	}
-
-   	// Construct a turf polygon <- geojson
-   	var turfPoly = turf.polygon([turfCoords]);
-
-   	// Add a tag to the new polygon, this is useful when the the user deletes a polygon
-   	turfPoly["id"] = leaflet_id;
-
-   	return turfPoly;
-}
-
-/**
-* Creates a turf line string from a leaflet layer
-* @param {L.Layer} layer - Leaflet layer
-* @param {Number} id - leaflet id of the original layer
-* @return {Feature} GeoJSON Feature: linestring
-*/
-function getTurfLineString(layer, leaflet_id){
-
-  // Extract coordinates
-  var coordsArray = [];
-  for(var ii = 0; ii < layer.getLatLngs().length; ii++){
-    // Turf coords starts from lng then lat
-    coordsArray.push([layer.getLatLngs()[ii].lng, layer.getLatLngs()[ii].lat]);
-  }
-
-  // Create a turf line string from the coords array and add its leaflet id for referencing
-  var turfLineString = turf.lineString(coordsArray);
-  turfLineString["id"] = leaflet_id;
-
-  return turfLineString;
-
-}
 
 /**
 * Removes a polygon nogo area from the map and the list

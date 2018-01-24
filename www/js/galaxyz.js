@@ -201,9 +201,25 @@ function readJson(){
 		success: function(result){
 			//console.log(JSON.parse(result));
 			var obj = JSON.parse(result)
-			//console.log(obj);
 			
-			L.geoJSON(obj).addTo(map);
+			//var features = [];
+			//for(var i = 0; i = obj.length; i++) {
+			//	features.push(obj[i]);
+			//}
+			//var fc = turf.featurecollection(features);
+
+			//L.geoJSON(obj).addTo(map);
+			//console.log(fc);
+			//stageJSONFile(fc);
+			var features = [];
+			for(var i = 0; i < obj.length; i++) {
+				//console.log(obj[i]);
+				features.push(obj[i]);
+			}
+			var fc = turf.featureCollection(features);
+			//console.log(fc);
+			stageJSONFile(fc);
+
 		}
 	});
 }

@@ -13,23 +13,6 @@ var node_id;
 
 var directionMarkers = [];
 
-var app_id;
-var app_code;
-
-//Get GeocoderCredits when document ready
-$(document).ready(function () {
-    function getAppCredits() {
-        return $.getJSON("config.json", function (data) {
-        });
-    }
-
-    //Wait till Get Config AppCredits
-    getAppCredits().done(function (returndata) {
-        app_id = returndata['geocoder_app_id'];
-        app_code = returndata['geocoder_app_code'];
-    });
-});
-
 function initRouting() {
 
     directions = new L.FeatureGroup();
@@ -56,14 +39,13 @@ function addDirectionPoint(x, y) {
 
         var isInside = validateNewPoint(point);
 
+        if(!isInside){
 
-        if (!isInside) {
 
-
-            if (directionPoints.length > 0) {
-
+            if(directionPoints.length > 0){
+                
                 // !!! y, x for leaflet lat lng format !
-                guides.addLayer(getAntLineForLastDirPoint(new L.LatLng(y, x)));
+                guides.addLayer(getAntLineForLastDirPoint(new L.LatLng(y,x)));
             }
 
             // Find the closest node_id in the network and proces the new point
@@ -89,18 +71,23 @@ function addDirectionPoint(x, y) {
  */
 function validateNewPoint(newPoint) {
 
-    var isInside = false;
+    var contains = false;
 
-    for (var i = 0; i < nogo_Poly.length; i++) {
-        isInside = turf.inside(newPoint, nogo_Poly[i]);
-        if (isInside) {
-            break;
+    nogoAreas.eachLayer(function (layer) {
+
+        var nogo = layer.toGeoJSON();
+        
+        var isInside = turf.inside(newPoint, nogo);
+
+        if(isInside == true){
+
+            contains = true;
         }
-    }
 
-    return isInside;
+    });
+
+    return contains;
 }
-
 /**
  * Validates adding drawn nogo polygon by checking if it intersects with a direction point
  *
@@ -109,21 +96,22 @@ function validateNewPoint(newPoint) {
  */
 function validateNogoPoly(polygon) {
 
-    var isInside = false;
+    var contains = false;
 
-    for (var i = 0; i < directionPoints.length; i++) {
+    console.log(polygon);
 
-        var item = directionPoints[i];
-        var point = turf.point([item.geometry.coordinates[1], item.geometry.coordinates[0]]);
+    directions.eachLayer(function (marker) {
 
-        isInside = turf.inside(point, polygon);
-        if (isInside) {
-            break;
+        var point = marker.toGeoJSON();
+        
+        var isInside = turf.inside(point, polygon);
+
+        if(isInside == true) {
+            contains = true;
         }
+    });
 
-    }
-
-    return isInside;
+    return contains;
 }
 
 /**
@@ -151,7 +139,7 @@ function processNewPoint(node_id, point) {
         // Create Leaflet latlng
         point.latlng = [point.geometry.coordinates[1], point.geometry.coordinates[0]];
 
-        // Add point to list
+        // Add point to list and render
         directionPoints.push(point);
         renderDirectionPoint(node_id, point);
 
@@ -175,7 +163,7 @@ function processNewPoint(node_id, point) {
 /**
  * Handles the general rendering of the point on the map
  *
- * To be worked on later by adding more listeners and bind popup
+ * To be worked on later by adding more listeners and bind popup and directions
 
  * @param {number} node_id  -  Closest node id of the point
  * @param {Geojson} point - Point clicked on the map
@@ -186,7 +174,7 @@ function renderDirectionPoint(node_id, point) {
 
     // Create marker from Geojson
     var marker = new L.marker([point.geometry.coordinates[1], point.geometry.coordinates[0]], {draggable: 'true'});
-
+    
     //----------------------------------------
 
     // Add ondrag event.
@@ -200,15 +188,31 @@ function renderDirectionPoint(node_id, point) {
 
         })
 
-        .on('dragend', function (event) {
+        .on('dragstart', function (event) {
+
+            map.closePopup();
+            marker['previouslocation'] = marker.getLatLng();
+
+        })
+
+        .on('dragend', function(event) {
 
             var newMarker = event.target;
 
             var x = event.target.getLatLng().lng;
             var y = event.target.getLatLng().lat;
 
-            getClosestNode(x, y, node_id => onMarkerDragEnd(event, node_id));
+            var contains = validateNewPoint(event.target.toGeoJSON());
 
+            if(!contains){
+
+                getClosestNode(x, y, node_id => onMarkerDragEnd(event, node_id));
+
+            } else{
+
+                marker.setLatLng(marker.previouslocation);
+                alert("Cannot drag marker inside a nogo area!");
+            }
 
         })
 
@@ -246,14 +250,7 @@ function renderDirectionPoint(node_id, point) {
                             markerAddress = currAddress['Street'] + ", " + currAddress['HouseNumber'] + ", " + currAddress['City'];
                         }
 
-                        try {
-                            marker.unbindTooltip();
-                        }
-                        catch (err) {
-                            console.log("Unbind Popup ", err);
-                        }
-                        //Add Info to Marker
-                        marker.bindTooltip("Node ID: " + node_id + " Address: " + markerAddress, {
+                        marker.bindPopup(" Address: " + markerAddress, {
                             direction: 'top',
                             permanent: true
                         });
@@ -266,9 +263,6 @@ function renderDirectionPoint(node_id, point) {
             }
         )
 
-
-    // Simple tooltip
-    //.bindTooltip("Node ID: " + node_id, {direction: 'top', permanent: true});
 
 //----------------------------------------
 
@@ -307,7 +301,6 @@ function refreshRoute() {
  * Renders the found route on the map
  */
 var routeLayer;
-
 function renderRoute(route) {
 
     // Clear old route
@@ -340,15 +333,7 @@ function getAllNogoAreas() {
 function getFromToPoints() {
 
     var dirPoints = [];
-
-    //dirPoints["from"] = directionPoints[0].node_id;
-    //dirPoints["to"] = directionPoints[1].node_id;
-    /**
-     for (var i=0; i<directionPoints.length; i++) {
-        dirPoints[i] = directionPoints[i].node_id;
-    }
-     */
-
+    
     directions.eachLayer(function (marker) {
         dirPoints.push(marker.node_id);
     });
@@ -364,9 +349,17 @@ function getFromToPoints() {
 
 function getAntLineForLastDirPoint(to_latlng) {
 
+    var dirPoints = [];
+
+    directions.eachLayer(function (marker) {
+        var item = marker;
+        item['latlng'] = marker.getLatLng();
+        dirPoints.push(item);
+    });
+
     try {
 
-        var lastPoint = directionPoints[directionPoints.length - 1];
+        var lastPoint = dirPoints[dirPoints.length - 1];
         var latlngs = [lastPoint.latlng, to_latlng];
 
         var options = {delay: 300, dashArray: [10, 20], weight: 5, color: "darkblue", pulseColor: "#FFFFFF"};
@@ -381,6 +374,10 @@ function getAntLineForLastDirPoint(to_latlng) {
 
 //Backwards Geocoder
 function getURLBackwardsGeocoder(markerCoor) {
+    //Access Credentials
+    //Valid till March 8 2018
+    var app_id = "VArrXyHCf6xwnR8Wwp5X";
+    var app_code = "4PrsrNN9oitLO0DPSEncLg";
 
     var lat = markerCoor['lat'];
     var long = markerCoor['lng'];

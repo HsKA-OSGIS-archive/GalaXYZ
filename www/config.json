@@ -1,10 +1,10 @@
 {
-  "db_host": "HOST_ADDRESS",
-  "db_port": PORT_NUMBER,
-  "db_name": "DB_NAME",
-  "db_schema": "DB_SCHEMA",
-  "db_user": "DB_USER",
-  "db_pwd": "DB_PASSWORD",
+  "db_host": "localhost",
+  "db_port": 5432,
+  "db_name": "nogo_dijkstra",
+  "db_schema": "public",
+  "db_user": "postgres",
+  "db_pwd": "postgres",
   "geo_srid": 4326,
   "geo_bbox": [
     8.29539476408,
