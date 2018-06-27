@@ -30,25 +30,24 @@
 				(
 					SELECT
 						seq AS gid,
-						route_result.id1 AS route_id,
-						route_result.id3 AS edge_id,
+						route_result.edge AS edge_id,
 						ways.name,
-						the_geom AS geom
-					FROM pgr_trspViaVertices(
+						geom AS geom
+					FROM pgr_dijkstra(
 							'SELECT gid::INTEGER AS id, source::INTEGER, target::INTEGER, cost::FLOAT8, reverse_cost::FLOAT8 FROM ways',
-							$1::INTEGER[],
-							TRUE,
+							$1::INTEGER,
+							$2::INTEGER,
 							TRUE
 						) AS route_result
 					INNER JOIN
 						ways
 					ON
-						ways.gid = route_result.id3
+						ways.gid = route_result.edge
 				)
 			row) features;";
 
 		//query the DB and pass necessary params
-		$result = pg_query_params( $conn, $sql, array(to_pg_array($nodes)) ) or die('Query Failed: ' .pg_last_error());
+		$result = pg_query_params( $conn, $sql, $nodes ) or die('Query Failed: ' .pg_last_error());
 
 		$finalvalue = pg_fetch_result($result, 0, 0);
 	    echo $finalvalue; //send result back to web page*/
@@ -100,12 +99,11 @@
 	    	(
 	    		SELECT
 	    			seq AS gid,
-	    			route_result.id1 AS route_id,
-	    			route_result.id3 AS edge_id,
+	    			route_result.edge AS edge_id,
 	    			ways.name,
-	    			the_geom AS geom
-	    		FROM pgr_nogo_trspViaVertices(
-	    				\'SELECT gid::INTEGER AS id, source::INTEGER, target::INTEGER, cost::FLOAT8, reverse_cost::FLOAT8, the_geom AS geom FROM ways\',
+	    			geom
+	    		FROM pgr_nogo_dijkstra(
+	    				\'SELECT gid::INTEGER AS id, source::INTEGER, target::INTEGER, cost::FLOAT8, reverse_cost::FLOAT8, geom AS geom FROM ways\',
 	    				(
 	                        SELECT
 	                            ST_SetSRID(ST_Union(ST_GeomFromGeoJSON(feat->>\'geometry\')), 4326)
@@ -115,23 +113,24 @@
 	                            feat
 	                    ) AS
 	                        f
-	        ),
-	    				$2, /* PUT NODE IDS HERE IN ORDER */
-	    				TRUE,
+	                    ),
+	    				$2::INTEGER, $3::INTEGER,
 	    				TRUE
 	    			) AS route_result
 	    		INNER JOIN
 	    			ways
 	    		ON
-	    			ways.gid = route_result.id3
+	    			ways.gid = route_result.edge
 	    	)
 	    row) features;
 
 
 		';
 
+        array_unshift($nodes , $jsonParam);
+
 		// send the query and necessary params to the DB
-		$result = pg_query_params( $conn, $sql, array($jsonParam,to_pg_array($nodes)) ) or die('Query Failed: ' .pg_last_error());
+		$result = pg_query_params( $conn, $sql, $nodes ) or die('Query Failed: ' .pg_last_error());
 
 		$finalvalue = pg_fetch_result($result, 0, 0);
 	    echo $finalvalue; //send result back to web page*/
